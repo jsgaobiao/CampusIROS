@@ -316,7 +316,7 @@ void GroundDetector::fitGndPlane(VelodyneRingData const& data) {
 
 void GroundDetector::labelGnd(VelodyneRingData &data) {
     sqgnd.clear();
-    labelSmoothSeqForScans(data, 50, 15);
+    labelSmoothSeqForScans(data, 20, 15);
     fitGndPlane(data);
     /*
      * 计算平滑曲线段距离地平面的高度，筛除非地面曲线段，标记地面曲线段上的激光点为地面点
@@ -328,19 +328,29 @@ void GroundDetector::labelGnd(VelodyneRingData &data) {
         }
         c.averH = tmpSumDis / (c.end - c.start + 1);
 
-        if (c.averH < 0.3 && c.disvar < 5e-5 && c.lineID < int(data.getLineNum() / 6.0)) {   // 10
-            c.label = Label::Ground;
+        if (c.lineID < int(data.getLineNum() / 6.0)) {
+            if (c.averH < 0.3 && c.disvar < 8e-5) {   // 10
+                c.label = Label::Ground;
+            }
         }
-        if (c.averH < 0.3 && c.disvar < 7e-5 && c.lineID < int(data.getLineNum() / 4.0)) {   // 16
-            c.label = Label::Ground;
+        else
+        if (c.lineID < int(data.getLineNum() / 4.0)) {
+            if (c.averH < 0.3 && c.disvar < 3e-4) {   // 16
+                c.label = Label::Ground;
+            }
         }
-        if (c.averH < 0.3 && c.disvar < 10e-5 * 2 && c.lineID < int(data.getLineNum() / 2.0)) {  // 32
-            c.label = Label::Ground;
+        else
+        if (c.lineID < int(data.getLineNum()) / 2.0) {
+            if (c.averH < 0.3 && c.disvar < 6e-4) {  // 32
+                c.label = Label::Ground;
+            }
         }
-        if (c.averH < 0.3 && c.disvar < 10e-5 * 3 && c.lineID < int(data.getLineNum() * 0.75)) { // 48
-            c.label = Label::Ground;
+        else
+        if (c.lineID < int(data.getLineNum())) {
+            if (c.averH < 0.3 && c.disvar < 3e-3) { // 48
+                c.label = Label::Ground;
+            }
         }
-
     }
     for(auto c:sq1) {
         if(c.label == Label::Ground) {
