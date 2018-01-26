@@ -30,11 +30,15 @@ int millsecFromStartOfDay(long long us)
 
 void generateVelodyneRingData(VelodyneRingData &data, std::vector<velodyne::Laser> lasers)
 {
+    std::vector<double> lut32E = { -30.67, -9.3299999, -29.33, -8.0, -28, -6.6700001, -26.67, -5.3299999, -25.33, -4.0, -24.0, -2.6700001, -22.67, -1.33, -21.33, 0.0, -20.0, 1.33, -18.67, 2.6700001, -17.33, 4.0, -16, 5.3299999, -14.67, 6.6700001, -13.33, 8.0, -12.0, 9.3299999, -10.67, 10.67 };
+    std::sort(lut32E.begin(), lut32E.end(), [](const double &x, const double &y){return x < y;});
 
     // Convert to 3-dimention Coordinates
     long long timestamp = lasers[0].time;
 
     for( const velodyne::Laser& laser : lasers ){
+
+        int orderID = std::lower_bound(lut32E.begin(), lut32E.end(), laser.vertical) - lut32E.begin();
 
         const double distance = static_cast<double>( laser.distance ) * 0.002;
         const double azimuth  = laser.azimuth  * CV_PI / 180.0;
@@ -50,12 +54,12 @@ void generateVelodyneRingData(VelodyneRingData &data, std::vector<velodyne::Lase
         }
 
         data.setTimeStamp(TimeStamp(timestamp));
-        data.points.at(laser.id).push_back(cv::Point3d(x, y, z));
-        data.angle.at(laser.id).push_back(laser.azimuth);
-        data.distance.at(laser.id).push_back(distance);
-        data.intensity.at(laser.id).push_back(laser.intensity);
-        data.label.at(laser.id).push_back(Label(Label::Unknown));
-        data.enable.at(laser.id).push_back(1);
+        data.points.at(orderID).push_back(cv::Point3d(x, y, z));
+        data.angle.at(orderID).push_back(laser.azimuth);
+        data.distance.at(orderID).push_back(distance);
+        data.intensity.at(orderID).push_back(laser.intensity);
+        data.label.at(orderID).push_back(Label(Label::Unknown));
+        data.enable.at(orderID).push_back(1);
     }
 
 }
@@ -63,7 +67,7 @@ void generateVelodyneRingData(VelodyneRingData &data, std::vector<velodyne::Lase
 int main( int argc, char* argv[] )
 {
     // Open VelodyneVelodyneRingDataCapture that retrieve from PCAP
-    const std::string filename = "/media/gaobiao/SeagateBackupPlusDrive/Campus/origin/campus1/2017-04-11-07-36-41_Velodyne-HDL-32-Data.pcap";
+    const std::string filename = "/media/gaobiao/SeagateBackupPlusDrive/Campus/origin/campus2/2017-04-11-09-38-58_Velodyne-HDL-32-Data.pcap";
     velodyne::HDL32EPcapCapture capture( filename );
 
     if( !capture.isOpen() ){
@@ -112,11 +116,12 @@ int main( int argc, char* argv[] )
         // Show Ground
         for (int i = 0; i < LINE_NUM; i ++)
             for (int j = 0; j < data.points[i].size(); j ++) {
-                buffer.push_back( cv::Vec3f( data.points[i][j].x, data.points[i][j].y, data.points[i][j].z ) );
                 if (data.label[i][j].is(Label::Ground)) {
-                    bufferColor.push_back(cv::Vec3b(220, 220, 0));
+//                    buffer.push_back( cv::Vec3f( data.points[i][j].x, data.points[i][j].y, data.points[i][j].z ) );
+//                    bufferColor.push_back(cv::Vec3b(220, 220, 0));
                 }
                 else {
+                    buffer.push_back( cv::Vec3f( data.points[i][j].x, data.points[i][j].y, data.points[i][j].z ) );
                     bufferColor.push_back(cv::Vec3b(255, 255, 255));
                 }
             }
