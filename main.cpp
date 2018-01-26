@@ -57,13 +57,13 @@ void generateVelodyneRingData(VelodyneRingData &data, std::vector<velodyne::Lase
         data.label.at(laser.id).push_back(Label(Label::Unknown));
         data.enable.at(laser.id).push_back(1);
     }
-
 }
 
 int main( int argc, char* argv[] )
 {
     // Open VelodyneVelodyneRingDataCapture that retrieve from PCAP
-    const std::string filename = "/media/gaobiao/SeagateBackupPlusDrive/Campus/origin/campus1/2017-04-11-07-36-41_Velodyne-HDL-32-Data.pcap";
+    const std::string filename = "/media/pku-m/TOSHIBA/Data/20170410_campus/origin/campus2/2017-04-11-09-38-58_Velodyne-HDL-32-Data.pcap";
+    const std::string gndfeatfilename = "/media/pku-m/TOSHIBA/Data/20170410_campus/origin/campus2/tst.xy";
     velodyne::HDL32EPcapCapture capture( filename );
 
     if( !capture.isOpen() ){
@@ -91,6 +91,8 @@ int main( int argc, char* argv[] )
     VelodyneRingData data(LINE_NUM, MAX_POINTS_PER_LINE);
     GroundDetector gndDetector(32);
 
+    std::ofstream gndFeatFile;
+    gndFeatFile.open(gndfeatfilename, std::ios_base::binary);
 
     while( !viewer.wasStopped() ){
         // Capture One Rotation Data
@@ -107,20 +109,32 @@ int main( int argc, char* argv[] )
         std::vector<cv::Vec3f> buffer( lasers.size() );
         std::vector<cv::Vec3b> bufferColor( lasers.size() );
         long long timestamp = lasers[0].time;
-        timestampfile<<timestamp<<'\t'<<millsecFromStartOfDay(timestamp)<<std::endl;
+        long long lasertime = millsecFromStartOfDay(timestamp);
+
+        timestampfile<<timestamp<<'\t'<<lasertime<<std::endl;
 
         // Show Ground
+        std::vector<cv::Point2d> gndpts;
         for (int i = 0; i < LINE_NUM; i ++)
             for (int j = 0; j < data.points[i].size(); j ++) {
                 buffer.push_back( cv::Vec3f( data.points[i][j].x, data.points[i][j].y, data.points[i][j].z ) );
                 if (data.label[i][j].is(Label::Ground)) {
+                    gndpts.push_back(cv::Point2d(data.points[i][j].x, data.points[i][j].y));
                     bufferColor.push_back(cv::Vec3b(220, 220, 0));
                 }
                 else {
                     bufferColor.push_back(cv::Vec3b(255, 255, 255));
                 }
             }
-
+        //save gnd points
+        gndFeatFile.write((char*)&lasertime, sizeof(long long));
+        int size = gndpts.size();
+        gndFeatFile.write((char*)&size, sizeof(int));
+        for (int i=0; i<gndpts.size(); i++)
+        {
+            gndFeatFile.write((char*)&gndpts[i].x, sizeof(double));
+            gndFeatFile.write((char*)&gndpts[i].y, sizeof(double));
+        }
         // Create Widget
         cv::Mat cloudMat = cv::Mat( static_cast<int>( buffer.size() ), 1, CV_32FC3, &buffer[0] );
         cv::Mat cloudColorMat = cv::Mat( static_cast<int>( bufferColor.size() ), 1, CV_8UC3, &bufferColor[0] );
@@ -131,6 +145,8 @@ int main( int argc, char* argv[] )
         viewer.showWidget( "Cloud", cloud );
         viewer.spinOnce();
     }
+
+    gndFeatFile.close();
 
     // Close All Viewers
     cv::viz::unregisterAllWindows();
