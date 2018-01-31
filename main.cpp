@@ -162,6 +162,8 @@ int main( int argc, char* argv[] )
     GroundDetector gndDetector(32);
     ECSegmentation ecs;
 
+    std::ofstream gndFeatFile;
+    gndFeatFile.open(gndfeatfilename, std::ios_base::binary);
 
     while( !viewer.wasStopped() ){
         // Capture One Rotation Data
@@ -189,14 +191,17 @@ int main( int argc, char* argv[] )
         buffer.clear();
         bufferColor.clear();
         long long timestamp = lasers[0].time;
-        timestampfile<<timestamp<<'\t'<<millsecFromStartOfDay(timestamp)<<std::endl;
+        long long lasertime = millsecFromStartOfDay(timestamp);
+
+        timestampfile<<timestamp<<'\t'<<lasertime<<std::endl;
 
         // Show Ground
+        std::vector<cv::Point2d> gndpts;
         for (int i = 0; i < LINE_NUM; i ++)
             for (int j = 0; j < data.points[i].size(); j ++) {
                 if (data.label[i][j].is(Label::Ground)) {
-//                    buffer.push_back( cv::Vec3f( data.points[i][j].x, data.points[i][j].y, data.points[i][j].z ) );
-//                    bufferColor.push_back(cv::Vec3b(220, 220, 0));
+                    gndpts.push_back(cv::Point2d(data.points[i][j].x, data.points[i][j].y));
+                    bufferColor.push_back(cv::Vec3b(220, 220, 0));
                 }
                 else {
 //                    if (data.points[i][j].z > -0.1) continue;
@@ -212,7 +217,6 @@ int main( int argc, char* argv[] )
                     bufferColor.push_back(cv::Vec3b(B, G, R));
                 }
             }
-
         // Show segmentation result
         ecs.getSegResult(buffer, bufferColor);
 
@@ -227,6 +231,8 @@ int main( int argc, char* argv[] )
         usleep(100000);
         viewer.spinOnce();
     }
+
+    gndFeatFile.close();
 
     // Close All Viewers
     cv::viz::unregisterAllWindows();
