@@ -162,9 +162,6 @@ int main( int argc, char* argv[] )
     GroundDetector gndDetector(32);
     ECSegmentation ecs;
 
-    std::ofstream gndFeatFile;
-    gndFeatFile.open(gndfeatfilename, std::ios_base::binary);
-
     while( !viewer.wasStopped() ){
         // Capture One Rotation Data
         std::vector<velodyne::Laser> lasers;
@@ -200,8 +197,8 @@ int main( int argc, char* argv[] )
         for (int i = 0; i < LINE_NUM; i ++)
             for (int j = 0; j < data.points[i].size(); j ++) {
                 if (data.label[i][j].is(Label::Ground)) {
-                    gndpts.push_back(cv::Point2d(data.points[i][j].x, data.points[i][j].y));
-                    bufferColor.push_back(cv::Vec3b(220, 220, 0));
+//                    gndpts.push_back(cv::Point2d(data.points[i][j].x, data.points[i][j].y));
+//                    bufferColor.push_back(cv::Vec3b(220, 220, 0));
                 }
                 else {
 //                    if (data.points[i][j].z > -0.1) continue;
@@ -231,8 +228,6 @@ int main( int argc, char* argv[] )
         usleep(100000);
         viewer.spinOnce();
     }
-
-    gndFeatFile.close();
 
     // Close All Viewers
     cv::viz::unregisterAllWindows();
