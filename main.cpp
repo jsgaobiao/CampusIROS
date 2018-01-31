@@ -13,6 +13,7 @@
 #include <velodyneringdata.h>
 #include <grounddetector.h>
 #include <ECSegmentation.h>
+#include <TrajCapture.h>
 
 #define LINE_NUM 32
 #define MAX_POINTS_PER_LINE 2200
@@ -79,7 +80,7 @@ void generatePCLPointCloudData(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, Velody
     for (int i = 0; i < LINE_NUM; i ++)
         for (int j = 0; j < data.points[i].size(); j ++)
             if (! data.label[i][j].is(Label::Ground)) {
-                if (! data.label[i][j].is(Label::Inlier)) continue;
+//                if (! data.label[i][j].is(Label::Inlier)) continue;
                 if (data.points[i][j].x != std::numeric_limits<float>::quiet_NaN() &&
                     data.points[i][j].y != std::numeric_limits<float>::quiet_NaN() &&
                     data.points[i][j].z != std::numeric_limits<float>::quiet_NaN())
@@ -124,16 +125,37 @@ void labelOutliers(VelodyneRingData &data)
     }
 }
 
+bool comp(const TrajData a, const TrajData b) { return a.timestamp < b.timestamp; }
+
+void getTrackResult(TrajCapture &trajCap, cv::viz::Viz3d &viewer, long long lasertime)
+{
+    TrajData tmp;
+    viewer.removeAllWidgets();
+    tmp.timestamp = lasertime;
+    int start = std::lower_bound(trajCap.data.begin(), trajCap.data.end(), tmp, comp) - trajCap.data.begin();
+    for (int i = start; i < trajCap.data.size(); i ++) {
+        if (trajCap.data[i].timestamp - lasertime > 89) break;
+        double _x = - trajCap.data[i].ly;
+        double _y = trajCap.data[i].lx;
+        cv::viz::WCube newCube(cv::Point3f(_x - 1, _y - 1, -2), cv::Point3f(_x + 0.5, _y + 0.5, -2), true, cv::viz::Color::yellow());
+        viewer.showWidget(std::to_string(trajCap.data[i].tno), newCube);
+    }
+}
+
 int main( int argc, char* argv[] )
 {
     double _clusterTolerance;
     int _minClusterSize;
     int _maxClusterSize;
+    long long lastTime = 0;
+
     // Open VelodyneVelodyneRingDataCapture that retrieve from PCAP
     freopen("/home/gaobiao/paraments.xml", "r", stdin);
     scanf("%lf %d %d\n", &_clusterTolerance, &_minClusterSize, &_maxClusterSize);
     const std::string filename = "/home/gaobiao/Data/Campus/2017-04-11-09-38-58_Velodyne-HDL-32-Data.pcap";
+    const std::string trajFileName = "/home/gaobiao/Data/Campus/2m.traj";
     velodyne::HDL32EPcapCapture capture( filename );
+    TrajCapture trajCap( trajFileName );
 
     if( !capture.isOpen() ){
         std::cerr << "Can't open VelodyneCapture." << std::endl;
@@ -158,11 +180,11 @@ int main( int argc, char* argv[] )
     timestampfile.open("timestamp.txt");
 
     VelodyneRingData data(LINE_NUM, MAX_POINTS_PER_LINE);
-//    pcl::PointCloud<pcl::PointXYZ> pclCloud;
     GroundDetector gndDetector(32);
     ECSegmentation ecs;
 
     while( !viewer.wasStopped() ){
+
         // Capture One Rotation Data
         std::vector<velodyne::Laser> lasers;
         capture >> lasers;
@@ -176,11 +198,11 @@ int main( int argc, char* argv[] )
         gndDetector.labelGnd(data);
 
         // Label Outliers of Velodyne Ring data
-        labelOutliers(data);
+//         labelOutliers(data);
 
         // Construct ECSegmentation Class
         generatePCLPointCloudData(ecs.cloudPtr, data);
-        ecs.initialize(_clusterTolerance, _minClusterSize, _maxClusterSize);
+//        ecs.initialize(_clusterTolerance, _minClusterSize, _maxClusterSize);
 
         // Convert to 3-dimention Coordinates
         std::vector<cv::Vec3f> buffer;
@@ -189,8 +211,11 @@ int main( int argc, char* argv[] )
         bufferColor.clear();
         long long timestamp = lasers[0].time;
         long long lasertime = millsecFromStartOfDay(timestamp);
+        if (lastTime == 0) lastTime = lasertime;
+        if (lasertime - lastTime > 200) lasertime = lastTime + 100;
 
         timestampfile<<timestamp<<'\t'<<lasertime<<std::endl;
+        lastTime = lasertime;
 
         // Show Ground
         std::vector<cv::Point2d> gndpts;
@@ -214,8 +239,12 @@ int main( int argc, char* argv[] )
                     bufferColor.push_back(cv::Vec3b(B, G, R));
                 }
             }
+
         // Show segmentation result
-        ecs.getSegResult(buffer, bufferColor);
+//        ecs.getSegResult(buffer, bufferColor);
+
+        // Show Tracking result
+        getTrackResult(trajCap, viewer, lasertime);
 
         // Create Widget
         cv::Mat cloudMat = cv::Mat( static_cast<int>( buffer.size() ), 1, CV_32FC3, &buffer[0] );
@@ -225,7 +254,7 @@ int main( int argc, char* argv[] )
 
         // Show Point Cloud
         viewer.showWidget( "Cloud", cloud );
-        usleep(100000);
+        usleep(200000);
         viewer.spinOnce();
     }
 
