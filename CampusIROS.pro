@@ -2,6 +2,13 @@ QT     += core gui xml widgets
 TEMPLATE = app
 CONFIG += console c++11
 
+#BOOST
+LIBS += -lboost_system
+
+#PCL
+LIBS += -lpcl_common -lpcl_kdtree -lpcl_search -lpcl_features -lpcl_segmentation
+INCLUDEPATH += /usr/local/include/pcl-1.8/
+
 #PCAP
 LIBS += -lpcap
 
@@ -45,7 +52,8 @@ SOURCES += main.cpp \
     LocalizationUtils/typeconverter.cpp \
     LocalizationUtils/vcudata.cpp \
     LocalizationUtils/velocalib.cpp \
-    LocalizationUtils/velodyneringdata.cpp
+    LocalizationUtils/velodyneringdata.cpp \
+    ECSegmentation.cpp
 
 FORMS += \
     geneFeatureFile/mainwindow.ui
@@ -80,4 +88,5 @@ HEADERS += \
     LocalizationUtils/vcudata.h \
     LocalizationUtils/velocalib.h \
     LocalizationUtils/velodyneringdata.h \
-    VelodynePcapCapture.h
+    VelodynePcapCapture.h \
+    ECSegmentation.h

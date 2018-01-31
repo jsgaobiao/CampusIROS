@@ -27,7 +27,7 @@ public:
         MidLayerFeature = 1 << 8,
         ObjectOnRoad = 1 << 9,
         Matched = 1 << 10,
-        OutMap = 1 << 11
+        Inlier = 1 << 11
     };/**< 使用二进制位定义可能需要的各个类别 */
     /**
      * @brief 添加B所具备的所有标签

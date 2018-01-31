@@ -4,6 +4,7 @@
 #include <cmath>
 #include <fstream>
 #include <time.h>
+#include <cstdlib>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/viz.hpp>
@@ -11,11 +12,18 @@
 #include <VelodynePcapCapture.h>
 #include <velodyneringdata.h>
 #include <grounddetector.h>
+#include <ECSegmentation.h>
 
 #define LINE_NUM 32
 #define MAX_POINTS_PER_LINE 2200
+#define sqr(X) ((X)*(X))
 
 using namespace std;
+
+double calcDis(cv::Point3d &a, cv::Point3d &b)
+{
+    return std::sqrt(sqr(a.x - b.x) + sqr(a.y - b.y) + sqr(a.z - b.z));
+}
 
 int millsecFromStartOfDay(long long us)
 {
@@ -30,6 +38,7 @@ int millsecFromStartOfDay(long long us)
 
 void generateVelodyneRingData(VelodyneRingData &data, std::vector<velodyne::Laser> lasers)
 {
+    data.clear();
     std::vector<double> lut32E = { -30.67, -9.3299999, -29.33, -8.0, -28, -6.6700001, -26.67, -5.3299999, -25.33, -4.0, -24.0, -2.6700001, -22.67, -1.33, -21.33, 0.0, -20.0, 1.33, -18.67, 2.6700001, -17.33, 4.0, -16, 5.3299999, -14.67, 6.6700001, -13.33, 8.0, -12.0, 9.3299999, -10.67, 10.67 };
     std::sort(lut32E.begin(), lut32E.end(), [](const double &x, const double &y){return x < y;});
 
@@ -52,7 +61,7 @@ void generateVelodyneRingData(VelodyneRingData &data, std::vector<velodyne::Lase
             y = std::numeric_limits<float>::quiet_NaN();
             z = std::numeric_limits<float>::quiet_NaN();
         }
-
+        // Velodyne Ring Data
         data.setTimeStamp(TimeStamp(timestamp));
         data.points.at(orderID).push_back(cv::Point3d(x, y, z));
         data.angle.at(orderID).push_back(laser.azimuth);
@@ -61,13 +70,69 @@ void generateVelodyneRingData(VelodyneRingData &data, std::vector<velodyne::Lase
         data.label.at(orderID).push_back(Label(Label::Unknown));
         data.enable.at(orderID).push_back(1);
     }
+}
 
+void generatePCLPointCloudData(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, VelodyneRingData &data)
+{
+    cloud->clear();
+
+    for (int i = 0; i < LINE_NUM; i ++)
+        for (int j = 0; j < data.points[i].size(); j ++)
+            if (! data.label[i][j].is(Label::Ground)) {
+                if (! data.label[i][j].is(Label::Inlier)) continue;
+                if (data.points[i][j].x != std::numeric_limits<float>::quiet_NaN() &&
+                    data.points[i][j].y != std::numeric_limits<float>::quiet_NaN() &&
+                    data.points[i][j].z != std::numeric_limits<float>::quiet_NaN())
+                {
+                    cloud->points.push_back(pcl::PointXYZ(data.points[i][j].x, data.points[i][j].y, data.points[i][j].z));
+                }
+            }
+
+    cloud->width = cloud->points.size();
+    cloud->height = 1;
+    cloud->is_dense = true;
+    printf("Total Points Num: %d\n", cloud->width);
+}
+
+void labelOutliers(VelodyneRingData &data)
+{
+    int slidWindow = 3;
+    int slidWindowMax = 30;
+    double threshold = 0.1;
+    int cnt = 0;
+
+    for (int i = 0; i < LINE_NUM; i ++) {
+        cnt = 0;
+        for (int j = 1; j < data.points[i].size(); j ++) {
+            if (calcDis(data.points[i][j], data.points[i][j-1]) < threshold) {
+                cnt ++;
+            }
+            else {
+                if (cnt >= slidWindow && cnt < slidWindowMax) {
+                    for (int k = j - 1; k >= j - cnt; k --) {
+                        data.label[i][k].set(Label::Inlier);
+                    }
+                }
+                cnt = 0;
+            }
+        }
+        if (cnt >= slidWindow && cnt < slidWindowMax) {
+            for (int k = data.points[i].size() - 1; k >= data.points[i].size() - cnt; k --) {
+                data.label[i][k].set(Label::Inlier);
+            }
+        }
+    }
 }
 
 int main( int argc, char* argv[] )
 {
+    double _clusterTolerance;
+    int _minClusterSize;
+    int _maxClusterSize;
     // Open VelodyneVelodyneRingDataCapture that retrieve from PCAP
-    const std::string filename = "/media/gaobiao/SeagateBackupPlusDrive/Campus/origin/campus2/2017-04-11-09-38-58_Velodyne-HDL-32-Data.pcap";
+    freopen("/home/gaobiao/paraments.xml", "r", stdin);
+    scanf("%lf %d %d\n", &_clusterTolerance, &_minClusterSize, &_maxClusterSize);
+    const std::string filename = "/home/gaobiao/Data/Campus/2017-04-11-09-38-58_Velodyne-HDL-32-Data.pcap";
     velodyne::HDL32EPcapCapture capture( filename );
 
     if( !capture.isOpen() ){
@@ -93,7 +158,9 @@ int main( int argc, char* argv[] )
     timestampfile.open("timestamp.txt");
 
     VelodyneRingData data(LINE_NUM, MAX_POINTS_PER_LINE);
+//    pcl::PointCloud<pcl::PointXYZ> pclCloud;
     GroundDetector gndDetector(32);
+    ECSegmentation ecs;
 
 
     while( !viewer.wasStopped() ){
@@ -103,13 +170,24 @@ int main( int argc, char* argv[] )
         if( lasers.empty() ){
             continue;
         }
-        data.clear();
+        // Generate Velodyne Ring data
         generateVelodyneRingData(data, lasers);
+
+        // Label points belongs to the ground
         gndDetector.labelGnd(data);
 
+        // Label Outliers of Velodyne Ring data
+        labelOutliers(data);
+
+        // Construct ECSegmentation Class
+        generatePCLPointCloudData(ecs.cloudPtr, data);
+        ecs.initialize(_clusterTolerance, _minClusterSize, _maxClusterSize);
+
         // Convert to 3-dimention Coordinates
-        std::vector<cv::Vec3f> buffer( lasers.size() );
-        std::vector<cv::Vec3b> bufferColor( lasers.size() );
+        std::vector<cv::Vec3f> buffer;
+        std::vector<cv::Vec3b> bufferColor;
+        buffer.clear();
+        bufferColor.clear();
         long long timestamp = lasers[0].time;
         timestampfile<<timestamp<<'\t'<<millsecFromStartOfDay(timestamp)<<std::endl;
 
@@ -121,10 +199,22 @@ int main( int argc, char* argv[] )
 //                    bufferColor.push_back(cv::Vec3b(220, 220, 0));
                 }
                 else {
+//                    if (data.points[i][j].z > -0.1) continue;
+                    int R, G, B;
+                    R = 255;
+                    G = 255;
+                    B = 255;
+//                    if (!data.label[i][j].is(Label::Inlier)) {
+//                        R = 255; G = 0; B = 0;
+//                        continue;
+//                    }
                     buffer.push_back( cv::Vec3f( data.points[i][j].x, data.points[i][j].y, data.points[i][j].z ) );
-                    bufferColor.push_back(cv::Vec3b(255, 255, 255));
+                    bufferColor.push_back(cv::Vec3b(B, G, R));
                 }
             }
+
+        // Show segmentation result
+        ecs.getSegResult(buffer, bufferColor);
 
         // Create Widget
         cv::Mat cloudMat = cv::Mat( static_cast<int>( buffer.size() ), 1, CV_32FC3, &buffer[0] );
@@ -134,6 +224,7 @@ int main( int argc, char* argv[] )
 
         // Show Point Cloud
         viewer.showWidget( "Cloud", cloud );
+        usleep(100000);
         viewer.spinOnce();
     }
 
