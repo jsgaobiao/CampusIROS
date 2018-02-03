@@ -33,4 +33,6 @@ TrajCapture::TrajCapture(std::string fin)
     else {
         printf("TrajCapture Open Error\n");
     }
+
+    in.close();
 }

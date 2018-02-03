@@ -127,18 +127,50 @@ void labelOutliers(VelodyneRingData &data)
 
 bool comp(const TrajData a, const TrajData b) { return a.timestamp < b.timestamp; }
 
-void getTrackResult(TrajCapture &trajCap, cv::viz::Viz3d &viewer, long long lasertime)
+bool isInBoundingBox(cv::Point3d pnt, cv::Point3f minBoxPnt, cv::Point3f maxBoxPnt)
+{
+    if (pnt.x >= minBoxPnt.x && pnt.x <= maxBoxPnt.x)
+        if (pnt.y >= minBoxPnt.y && pnt.y <= maxBoxPnt.y)
+            if (pnt.z >= minBoxPnt.z && pnt.z <= maxBoxPnt.z) {
+                return true;
+            }
+    return false;
+}
+
+void getTrackResult(TrajCapture &trajCap, cv::viz::Viz3d &viewer, long long lasertime, std::fstream &tpcOut, VelodyneRingData &data)
 {
     TrajData tmp;
     viewer.removeAllWidgets();
     tmp.timestamp = lasertime;
     int start = std::lower_bound(trajCap.data.begin(), trajCap.data.end(), tmp, comp) - trajCap.data.begin();
     for (int i = start; i < trajCap.data.size(); i ++) {
+        // Draw bounding box
         if (trajCap.data[i].timestamp - lasertime > 89) break;
         double _x = - trajCap.data[i].ly;
         double _y = trajCap.data[i].lx;
-        cv::viz::WCube newCube(cv::Point3f(_x - 1, _y - 1, -2), cv::Point3f(_x + 0.5, _y + 0.5, -2), true, cv::viz::Color::yellow());
+        cv::viz::WCube newCube(cv::Point3f(_x - 0.6, _y - 1, -2), cv::Point3f(_x + 0.9, _y + 0.5, 0), true, cv::viz::Color::yellow());
         viewer.showWidget(std::to_string(trajCap.data[i].tno), newCube);
+
+        // Extract point cloud inside the bounding box
+        int cntPnt = 0;
+        std::vector<cv::Point3d> pntList;
+        pntList.clear();
+        for (int j = 0; j < LINE_NUM; j ++) {
+            for (int k = 0; k < data.points[j].size(); k ++) {
+                if (data.label[j][k].is(Label::Ground)) continue;
+                if (isInBoundingBox(data.points[j][k], cv::Point3f(_x - 0.6, _y - 1, -2), cv::Point3f(_x + 0.9, _y + 0.5, 0))) {
+                    cntPnt ++;
+                    pntList.push_back(data.points[j][k]);
+                }
+            }
+        }
+        if (cntPnt < 40) continue;
+        tpcOut << trajCap.data[i].timestamp << " " << trajCap.data[i].tno << " " << trajCap.data[i].lx << " " << trajCap.data[i].ly << " ";
+        tpcOut << cntPnt << std::endl;
+        for (int j = 0; j < cntPnt; j ++) {
+            tpcOut << pntList[j].x << " " << pntList[j].y << " " << pntList[j].z << " ";
+        }
+        tpcOut << std::endl;
     }
 }
 
@@ -154,6 +186,9 @@ int main( int argc, char* argv[] )
     scanf("%lf %d %d\n", &_clusterTolerance, &_minClusterSize, &_maxClusterSize);
     const std::string filename = "/home/gaobiao/Data/Campus/2017-04-11-09-38-58_Velodyne-HDL-32-Data.pcap";
     const std::string trajFileName = "/home/gaobiao/Data/Campus/2m.traj";
+    const std::string perdestrianFileName = "/home/gaobiao/Data/Campus/2m.tpc";
+    std::fstream tpcOut(perdestrianFileName, std::ios::out);
+
     velodyne::HDL32EPcapCapture capture( filename );
     TrajCapture trajCap( trajFileName );
 
@@ -218,11 +253,10 @@ int main( int argc, char* argv[] )
         lastTime = lasertime;
 
         // Show Ground
-        std::vector<cv::Point2d> gndpts;
         for (int i = 0; i < LINE_NUM; i ++)
             for (int j = 0; j < data.points[i].size(); j ++) {
                 if (data.label[i][j].is(Label::Ground)) {
-//                    gndpts.push_back(cv::Point2d(data.points[i][j].x, data.points[i][j].y));
+//                    buffer.push_back( cv::Vec3f( data.points[i][j].x, data.points[i][j].y, data.points[i][j].z ) );
 //                    bufferColor.push_back(cv::Vec3b(220, 220, 0));
                 }
                 else {
@@ -244,22 +278,24 @@ int main( int argc, char* argv[] )
 //        ecs.getSegResult(buffer, bufferColor);
 
         // Show Tracking result
-        getTrackResult(trajCap, viewer, lasertime);
+        getTrackResult(trajCap, viewer, lasertime, tpcOut, data);
 
         // Create Widget
         cv::Mat cloudMat = cv::Mat( static_cast<int>( buffer.size() ), 1, CV_32FC3, &buffer[0] );
         cv::Mat cloudColorMat = cv::Mat( static_cast<int>( bufferColor.size() ), 1, CV_8UC3, &bufferColor[0] );
 
         cv::viz::WCloud cloud( cloudMat, cloudColorMat );
+        cloud.setRenderingProperty(cv::viz::POINT_SIZE, 2.0);
 
         // Show Point Cloud
         viewer.showWidget( "Cloud", cloud );
-        usleep(200000);
+//        usleep(100000);
         viewer.spinOnce();
     }
 
     // Close All Viewers
     cv::viz::unregisterAllWindows();
+    tpcOut.close();
 
     return 0;
 }

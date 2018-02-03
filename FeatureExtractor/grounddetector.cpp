@@ -321,6 +321,14 @@ void GroundDetector::labelGnd(VelodyneRingData &data) {
     /*
      * 计算平滑曲线段距离地平面的高度，筛除非地面曲线段，标记地面曲线段上的激光点为地面点
     */
+    for (int i = 0; i < data.points.size(); i ++) {
+        for (int j = 0; j < data.points[i].size(); j ++) {
+            double tmp = MathCalc::DistPt2Panel(data.points[i][j], gndPlaneParams[0], gndPlaneParams[1], gndPlaneParams[2], gndPlaneParams[3]);
+            if (tmp < 0.1) {
+                data.label[i][j].set(Label::Ground);
+            }
+        }
+    }
     for (auto &c : sq1) {
         double tmpSumDis = 0;
         for (size_t inx = c.start; inx <= c.end; inx++) {
