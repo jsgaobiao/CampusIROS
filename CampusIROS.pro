@@ -54,7 +54,8 @@ SOURCES += main.cpp \
     LocalizationUtils/velocalib.cpp \
     LocalizationUtils/velodyneringdata.cpp \
     ECSegmentation.cpp \
-    TrajCapture.cpp
+    TrajCapture.cpp \
+    utility.cpp
 
 FORMS += \
     geneFeatureFile/mainwindow.ui
@@ -91,4 +92,5 @@ HEADERS += \
     LocalizationUtils/velodyneringdata.h \
     VelodynePcapCapture.h \
     ECSegmentation.h \
-    TrajCapture.h
+    TrajCapture.h \
+    utility.h
