@@ -13,12 +13,13 @@ public:
     int timestamp;
     double lx;
     double ly;
+    bool isPedestrian;
 };
 
 class TrajCapture
 {
 public:
-    TrajCapture(std::string fin);
+    TrajCapture(std::string fin, std::string fwhiteList);
 
 public:
     std::vector<TrajData> data;

@@ -324,7 +324,7 @@ void GroundDetector::labelGnd(VelodyneRingData &data) {
     for (int i = 0; i < data.points.size(); i ++) {
         for (int j = 0; j < data.points[i].size(); j ++) {
             double tmp = MathCalc::DistPt2Panel(data.points[i][j], gndPlaneParams[0], gndPlaneParams[1], gndPlaneParams[2], gndPlaneParams[3]);
-            if (tmp < 0.1) {
+            if (tmp < 0.05) {
                 data.label[i][j].set(Label::Ground);
             }
         }

@@ -21,6 +21,8 @@
 
 using namespace std;
 
+int imgCnt = 0;
+
 double calcDis(cv::Point3d &a, cv::Point3d &b)
 {
     return std::sqrt(sqr(a.x - b.x) + sqr(a.y - b.y) + sqr(a.z - b.z));
@@ -137,7 +139,9 @@ bool isInBoundingBox(cv::Point3d pnt, cv::Point3f minBoxPnt, cv::Point3f maxBoxP
     return false;
 }
 
-void getTrackResult(TrajCapture &trajCap, cv::viz::Viz3d &viewer, long long lasertime, std::fstream &tpcOut, VelodyneRingData &data)
+void getTrackResult(std::string jpgDir, std::string jpgNegDir, TrajCapture &trajCap, cv::viz::Viz3d &viewer,
+                    long long lasertime, std::fstream &tpcOut, VelodyneRingData &data,
+                    std::vector<cv::Vec3f> &buffer, std::vector<cv::Vec3b> &bufferColor)
 {
     TrajData tmp;
     viewer.removeAllWidgets();
@@ -148,29 +152,70 @@ void getTrackResult(TrajCapture &trajCap, cv::viz::Viz3d &viewer, long long lase
         if (trajCap.data[i].timestamp - lasertime > 89) break;
         double _x = - trajCap.data[i].ly;
         double _y = trajCap.data[i].lx;
-        cv::viz::WCube newCube(cv::Point3f(_x - 0.6, _y - 1, -2), cv::Point3f(_x + 0.9, _y + 0.5, 0), true, cv::viz::Color::yellow());
-        viewer.showWidget(std::to_string(trajCap.data[i].tno), newCube);
+        if (trajCap.data[i].isPedestrian) {
+            cv::viz::WCube newCube(cv::Point3f(_x - 0.6, _y - 1, -2.5), cv::Point3f(_x + 0.9, _y + 0.5, -2.5), true, cv::viz::Color::yellow());
+            viewer.showWidget(std::to_string(trajCap.data[i].tno) + "BoundingBox", newCube);
+        }
+
+        // Draw tno text
+        if (trajCap.data[i].isPedestrian) {
+            cv::viz::WText3D tnoText(std::to_string(trajCap.data[i].tno), cv::Point3d(_x, _y, 0), 0.5, true, cv::Scalar(0, 255, 0));
+            viewer.showWidget(std::to_string(trajCap.data[i].tno), tnoText);
+        }
 
         // Extract point cloud inside the bounding box
         int cntPnt = 0;
         std::vector<cv::Point3d> pntList;
+        std::vector<int> pntIntensityList;
         pntList.clear();
+        pntIntensityList.clear();
         for (int j = 0; j < LINE_NUM; j ++) {
             for (int k = 0; k < data.points[j].size(); k ++) {
                 if (data.label[j][k].is(Label::Ground)) continue;
-                if (isInBoundingBox(data.points[j][k], cv::Point3f(_x - 0.6, _y - 1, -2), cv::Point3f(_x + 0.9, _y + 0.5, 0))) {
+                if (isInBoundingBox(data.points[j][k], cv::Point3f(_x - 0.6, _y - 1, -2.5), cv::Point3f(_x + 0.9, _y + 0.5, 0))) {
                     cntPnt ++;
                     pntList.push_back(data.points[j][k]);
+                    pntIntensityList.push_back(data.intensity[j][k]);
+                    data.label[j][k].set(Label::Tracking);
                 }
             }
         }
-        if (cntPnt < 40) continue;
-        tpcOut << trajCap.data[i].timestamp << " " << trajCap.data[i].tno << " " << trajCap.data[i].lx << " " << trajCap.data[i].ly << " ";
-        tpcOut << cntPnt << std::endl;
-        for (int j = 0; j < cntPnt; j ++) {
-            tpcOut << pntList[j].x << " " << pntList[j].y << " " << pntList[j].z << " ";
+
+        // Write point cloud info into tpc file
+        if (trajCap.data[i].isPedestrian) {
+            tpcOut << trajCap.data[i].timestamp << " " << trajCap.data[i].tno << " " << trajCap.data[i].lx << " " << trajCap.data[i].ly << " ";
+            tpcOut << cntPnt << std::endl;
+            for (int j = 0; j < cntPnt; j ++) {
+                tpcOut << pntList[j].x << " " << pntList[j].y << " " << pntList[j].z << " ";
+            }
+            tpcOut << std::endl;
         }
-        tpcOut << std::endl;
+
+        // Write image of point cloud into jpg file
+        int imgHeight = 250;
+        int imgWidth = 150;
+        cv::Mat img(imgHeight, imgWidth, CV_8UC3);
+        img = cv::Mat::zeros(imgHeight, imgWidth, CV_8UC3);
+        for (int j = 0; j < cntPnt; j ++) {
+            int imgX = imgHeight - ((pntList[j].z - (-2.5)) / 2.5 * imgHeight);
+            int imgY = (pntList[j].y - (_y - 1)) / 1.5 * imgWidth;
+            int imgDepth = (pntList[j].x - (_x - 0.6)) / 1.5 * 255;
+            int imgIntensity = pntIntensityList[j];
+
+            buffer.push_back( cv::Vec3f( pntList[j].x, pntList[j].y, pntList[j].z ) );
+            bufferColor.push_back(cv::Vec3b(0, 0, 255));
+
+            if (imgX >= 0 && imgX < imgHeight && imgY >=0 && imgY < imgWidth) {
+                cv::circle(img, cv::Point(imgY, imgX), 3, cv::Scalar(0, imgDepth, imgIntensity), -1);
+            }
+        }
+
+        if (trajCap.data[i].isPedestrian) {
+            cv::imwrite(jpgDir + std::to_string(imgCnt ++) + "_" + std::to_string(trajCap.data[i].tno) + ".jpg", img);
+        }
+        else {
+            cv::imwrite(jpgNegDir + std::to_string(imgCnt ++) + "_" + std::to_string(trajCap.data[i].tno) + ".jpg", img);
+        }
     }
 }
 
@@ -186,11 +231,14 @@ int main( int argc, char* argv[] )
     scanf("%lf %d %d\n", &_clusterTolerance, &_minClusterSize, &_maxClusterSize);
     const std::string filename = "/home/gaobiao/Data/Campus/2017-04-11-09-38-58_Velodyne-HDL-32-Data.pcap";
     const std::string trajFileName = "/home/gaobiao/Data/Campus/2m.traj";
-    const std::string perdestrianFileName = "/home/gaobiao/Data/Campus/2m.tpc";
-    std::fstream tpcOut(perdestrianFileName, std::ios::out);
+    const std::string pedestrianFileName = "/home/gaobiao/Data/Campus/2m.tpc";
+    const std::string pedestrianWhiteList = "/home/gaobiao/Data/Campus/2m.whitelist";
+    const std::string jpgDir = "/home/gaobiao/Data/Campus/2/";
+    const std::string jpgNegDir = "/home/gaobiao/Data/Campus/2_n/";
+    std::fstream tpcOut(pedestrianFileName, std::ios::out);
 
     velodyne::HDL32EPcapCapture capture( filename );
-    TrajCapture trajCap( trajFileName );
+    TrajCapture trajCap( trajFileName, pedestrianWhiteList );
 
     if( !capture.isOpen() ){
         std::cerr << "Can't open VelodyneCapture." << std::endl;
@@ -237,7 +285,7 @@ int main( int argc, char* argv[] )
 
         // Construct ECSegmentation Class
         generatePCLPointCloudData(ecs.cloudPtr, data);
-//        ecs.initialize(_clusterTolerance, _minClusterSize, _maxClusterSize);
+//        ecs.initialize(_clusterTolerance, _minClusterSize, _maxClusterSize);2
 
         // Convert to 3-dimention Coordinates
         std::vector<cv::Vec3f> buffer;
@@ -252,6 +300,12 @@ int main( int argc, char* argv[] )
         timestampfile<<timestamp<<'\t'<<lasertime<<std::endl;
         lastTime = lasertime;
 
+        // Show segmentation result2
+//        ecs.getSegResult(buffer, bufferColor);
+
+        // Show Tracking result
+        getTrackResult(jpgDir, jpgNegDir, trajCap, viewer, lasertime, tpcOut, data, buffer, bufferColor);
+
         // Show Ground
         for (int i = 0; i < LINE_NUM; i ++)
             for (int j = 0; j < data.points[i].size(); j ++) {
@@ -260,7 +314,7 @@ int main( int argc, char* argv[] )
 //                    bufferColor.push_back(cv::Vec3b(220, 220, 0));
                 }
                 else {
-//                    if (data.points[i][j].z > -0.1) continue;
+                    if (data.label[i][j].is(Label::Tracking)) continue;
                     int R, G, B;
                     R = 255;
                     G = 255;
@@ -274,18 +328,14 @@ int main( int argc, char* argv[] )
                 }
             }
 
-        // Show segmentation result
-//        ecs.getSegResult(buffer, bufferColor);
-
-        // Show Tracking result
-        getTrackResult(trajCap, viewer, lasertime, tpcOut, data);
-
+        buffer.push_back( cv::Vec3f( 0, 0, 0 ) );
+        bufferColor.push_back(cv::Vec3b(0, 0, 255));
         // Create Widget
         cv::Mat cloudMat = cv::Mat( static_cast<int>( buffer.size() ), 1, CV_32FC3, &buffer[0] );
         cv::Mat cloudColorMat = cv::Mat( static_cast<int>( bufferColor.size() ), 1, CV_8UC3, &bufferColor[0] );
 
         cv::viz::WCloud cloud( cloudMat, cloudColorMat );
-        cloud.setRenderingProperty(cv::viz::POINT_SIZE, 2.0);
+        cloud.setRenderingProperty(cv::viz::POINT_SIZE, 2.5);
 
         // Show Point Cloud
         viewer.showWidget( "Cloud", cloud );

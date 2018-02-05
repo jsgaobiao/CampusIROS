@@ -18,7 +18,7 @@ public:
         Unknown = 0,
         Ground = 1 << 0,
         LaneMarker = 1 << 1,
-        Barrier = 1 << 2,
+        Tracking = 1 << 2,
         LeftCurb = 1 << 3,
         RightCurb = 1 << 4,
         LineSeqTerminal = 1 << 5,
