@@ -211,10 +211,10 @@ void getTrackResult(std::string jpgDir, std::string jpgNegDir, TrajCapture &traj
         }
 
         if (trajCap.data[i].isPedestrian) {
-            cv::imwrite(jpgDir + std::to_string(imgCnt ++) + "_" + std::to_string(trajCap.data[i].tno) + ".jpg", img);
+            cv::imwrite(jpgDir + std::to_string(imgCnt ++) + "_" + std::to_string(trajCap.data[i].tno) + ".png", img);
         }
         else {
-            cv::imwrite(jpgNegDir + std::to_string(imgCnt ++) + "_" + std::to_string(trajCap.data[i].tno) + ".jpg", img);
+            cv::imwrite(jpgNegDir + std::to_string(imgCnt ++) + "_" + std::to_string(trajCap.data[i].tno) + ".png", img);
         }
     }
 }
